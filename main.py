@@ -214,15 +214,18 @@ if __name__ == '__main__':
     istrm = csv.reader(stdin)
     statevid = find_col_statevid(istrm)
     for record in csv.reader(stdin):
-        key = hashvid(record[statevid])
         for i in range(len(record)):
             record[i] = record[i].strip()
+        key = hashvid(record[statevid])
         if key in CONTACTS and keytoid[key] != record[38]:
             other = keytoid[key]
             msg = f'{record[statevid]}: hash collision found with {other}'
             raise ValueError(msg)
+        try:
+            CONTACTS[key] = Contact(record)
+        except Exception:
+            continue
         keytorecord[key] = tuple(record)
-        CONTACTS[key] = Contact(record)
         keytoid[key] = record[statevid]
     del keytoid
     # print(next(iter(CONTACTS.keys())))
@@ -230,7 +233,7 @@ if __name__ == '__main__':
     async def static_favicon(req):
         raise web.HTTPFound(location='https://wiltforcongress.com/favicon.ico')
 
-    app = web.Application()
+    app = web.Application(port=80)
     app.add_routes([web.get('/favicon.ico', static_favicon),
                     web.get('/{hash}', autofill_cksum),
                     web.get('/{hash}/apply', autofill_cksum),
