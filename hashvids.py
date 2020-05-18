@@ -1,5 +1,6 @@
 import struct
 import itertools as it
+import re
 
 
 def hashvid(vid):

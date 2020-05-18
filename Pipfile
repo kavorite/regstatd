@@ -11,3 +11,7 @@ aiohttp = "*"
 
 [requires]
 python_version = "3.7"
+
+[scripts]
+regstatd = 'python main.py'
+hashvids = 'python hashvids.py'
