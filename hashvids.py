@@ -1,4 +1,5 @@
 import struct
+import itertools as it
 
 
 def hashvid(vid):
@@ -13,10 +14,32 @@ def hashvid(vid):
     return struct.pack('<I', fnv).hex()
 
 
+def find_col_statevid(records):
+    head, snd = it.islice(records, 2)
+    records = it.chain((head, snd), records)
+    return next(i for i, cell in enumerate(snd)
+                if re.match('NY[0-9]+', cell) is not None)
+
+
+def find_col_checksum(records):
+    head, snd = it.islice(records, 2)
+    records = it.chain((head, snd), records)
+    return next(i for i, cell in enumerate(snd)
+                if re.match('[0-9a-f]{8}', cell))
+
+
 if __name__ == '__main__':
     import csv
+    import re
     from sys import stdin, stdout
+
     steno = csv.writer(stdout, dialect='unix')
-    for record in csv.reader(stdin):
-        record.append(hashvid(record[38]))
+    istrm = csv.reader(stdin)
+    head = next(istrm)
+    statevid = find_col_statevid(istrm)
+    for record in istrm:
+        try:
+            record = [record[0]] + [hashvid(record[statevid])] + record[1:]
+        except ValueError:
+            continue
         steno.writerow(record)
