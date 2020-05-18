@@ -233,10 +233,10 @@ if __name__ == '__main__':
     async def static_favicon(req):
         raise web.HTTPFound(location='https://wiltforcongress.com/favicon.ico')
 
-    app = web.Application(port=80)
+    app = web.Application()
     app.add_routes([web.get('/favicon.ico', static_favicon),
                     web.get('/{hash}', autofill_cksum),
                     web.get('/{hash}/apply', autofill_cksum),
                     # web.get('/{hash}/register', register),
                     web.get('/{hash}/status', regstat)])
-    web.run_app(app)
+    web.run_app(app, port=80)
