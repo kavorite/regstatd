@@ -31,7 +31,6 @@ def find_col_checksum(records):
 
 if __name__ == '__main__':
     import csv
-    import re
     from sys import stdin, stdout
 
     steno = csv.writer(stdout, dialect='unix')
@@ -40,7 +39,7 @@ if __name__ == '__main__':
     statevid = find_col_statevid(istrm)
     for record in istrm:
         try:
-            record = [record[0]] + [hashvid(record[statevid])] + record[1:]
+            record.append(hashvid(record[statevid]))
         except ValueError:
             continue
         steno.writerow(record)

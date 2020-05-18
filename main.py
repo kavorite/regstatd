@@ -221,10 +221,7 @@ if __name__ == '__main__':
             other = keytoid[key]
             msg = f'{record[statevid]}: hash collision found with {other}'
             raise ValueError(msg)
-        try:
-            CONTACTS[key] = Contact(record)
-        except Exception:
-            continue
+        CONTACTS[key] = Contact(record)
         keytorecord[key] = tuple(record)
         keytoid[key] = record[statevid]
     del keytoid
