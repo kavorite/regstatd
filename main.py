@@ -1,6 +1,9 @@
 from yattag import Doc
 from aiohttp import web
+from aiohttp.abc import AbstractAccessLogger
 from datetime import date
+from time import time as unix
+from dataclasses import dataclass
 from sys import stdout
 import string
 from hashvids import hashvid, find_col_statevid
@@ -49,28 +52,41 @@ INPUT_NAMES = (
         )
 
 
+@dataclass
 class Contact(object):
-    def __init__(self, record):
+    surname: str
+    forename: str
+    suffix: str
+    middle_initial: str
+    street: str
+    house: str
+    apt: str
+    city: str
+    state: str
+    phone: str
+    email: str
+    dob: date
+
+    @staticmethod
+    def from_record(self, record):
         surname, forename, mi, suffix = record[1:5]
-        self.surname = surname.strip().title()
-        self.forename = forename.strip().title()
+        surname = surname.strip().title()
+        forename = forename.strip().title()
         mi = mi.strip()
         if len(mi) > 1:
             mi = mi[0]
-        self.middle_initial = mi
         tr = str.maketrans('', '', string.punctuation)
         suffix = suffix.strip().translate(tr).title()
-        self.suffix = suffix
-        house, street, apt = record[5:8]
-        self.street = street.title()
-        self.house = house
-        self.apt = apt.title()
-        city, self.state, self.zip = record[11:14]
-        self.city = city.title()
-        self.phone, email = record[15:17]
-        self.email = email.lower()
+        house = record[5]
+        street, apt = map(str.title, record[6:8])
+        city, state, postcode = record[11:14]
+        city = city.title()
+        phone, email = record[15:17]
+        email = email.lower()
         month, day, year = record[27].split('/')
-        self.dob = date(int(year), int(month), int(day))
+        dob = date(int(year), int(month), int(day))
+        Contact(surname, forename, mi, suffix, house, street, apt, city, state,
+                postcode, phone, email, dob)
 
     def address(self):
         return f'{self.house} {self.street}'
@@ -204,6 +220,14 @@ async def regstat(req):
     return web.Response(text=doc.getvalue(), content_type='text/html')
 
 
+class TerseAccessLogger(AbstractAccessLogger):
+    def log(self, req, rsp, time):
+        timestamp = unix()
+        self.logger.info(f'{request.remote} '
+                         f'{unix():.3f} '
+                         f'{request.path}')
+
+
 if __name__ == '__main__':
     from sys import stdin, stderr
     from argparse import ArgumentParser
@@ -227,7 +251,7 @@ if __name__ == '__main__':
             other = keytoid[key]
             msg = f'{record[statevid]}: hash collision found with {other}'
             raise ValueError(msg)
-        CONTACTS[key] = Contact(record)
+        CONTACTS[key] = Contact.from_record(record)
         RECORDS[key] = record
         keytoid[key] = record[statevid]
     del keytoid
@@ -246,3 +270,4 @@ if __name__ == '__main__':
     with (open(args.log, 'a') if args.log is not None else stderr) as ostrm:
         with DaemonContext(stdout=ostrm, stderr=ostrm):
             web.run_app(app, port=80)
+            # web.run_app(app, port=80, access_log_class=TerseAccessLogger)
