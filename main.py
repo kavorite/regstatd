@@ -1,6 +1,7 @@
 from yattag import Doc
 from aiohttp import web
 from datetime import date
+from sys import stdout
 import string
 from hashvids import hashvid, find_col_statevid
 
@@ -154,7 +155,7 @@ async def autofill_cksum(req):
     doc.asis('<!DOCTYPE html>')
     with tag('head'):
         with tag('title'):
-            text('Mail-in Ballot Applications')
+            text(f"{contact.forename}'s Mail-in Ballot Application")
         with tag('script', type='text/javascript'):
             text('''
                  window.onload = function() {
@@ -205,24 +206,29 @@ async def regstat(req):
 
 if __name__ == '__main__':
     from sys import stdin, stderr
+    from argparse import ArgumentParser
+    from daemon import DaemonContext
     import csv
     import signal
+    import logging
+    parser = ArgumentParser()
+    parser.add_argument('--log', required=False)
+    args = parser.parse_args()
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     stderr.write('hydrate voter registrations...\n')
     keytoid: dict = {}
-    keytorecord: dict = {}
     istrm = csv.reader(stdin)
     statevid = find_col_statevid(istrm)
     for record in csv.reader(stdin):
         for i in range(len(record)):
             record[i] = record[i].strip()
         key = hashvid(record[statevid])
-        if key in CONTACTS and keytoid[key] != record[38]:
+        if key in CONTACTS and keytoid[key] != record[statevid]:
             other = keytoid[key]
             msg = f'{record[statevid]}: hash collision found with {other}'
             raise ValueError(msg)
         CONTACTS[key] = Contact(record)
-        keytorecord[key] = tuple(record)
+        RECORDS[key] = record
         keytoid[key] = record[statevid]
     del keytoid
     # print(next(iter(CONTACTS.keys())))
@@ -236,4 +242,7 @@ if __name__ == '__main__':
                     web.get('/{hash}/apply', autofill_cksum),
                     # web.get('/{hash}/register', register),
                     web.get('/{hash}/status', regstat)])
-    web.run_app(app, port=80)
+    logging.basicConfig(level=logging.INFO)
+    with (open(args.log, 'a') if args.log is not None else stderr) as ostrm:
+        with DaemonContext(stdout=ostrm, stderr=ostrm):
+            web.run_app(app, port=80)
