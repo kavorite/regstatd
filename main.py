@@ -159,17 +159,9 @@ async def autofill_cksum(req):
         with tag('script', type='text/javascript'):
             text('''
                  window.onload = function() {
-                     var msg = 'Congratulations, visitor! ' +
-                         'You are registered to vote, and ' +
-                         'Wilt for Congress was able to autofill your ' +
-                         'public filing for the sake of convenience ― ' +
-                         'please verify that everything in the following ' +
-                         'form is up to date before submitting your ' +
-                         'mail-in ballot application.';
-                     window.alert(msg);
-                     document.getElementById('abs-ballot-app').submit();
+                    document.getElementById('abs-ballot-app').submit()
                  }
-                 '''.replace('visitor', contact.forename))
+                 ''')
         with tag('form', method='post', action=endpoint, id='abs-ballot-app'):
             for key, val in contact.form_data():
                 doc.input(type='hidden', value=val, name=key)
@@ -235,9 +227,13 @@ if __name__ == '__main__':
 
     async def static_favicon(req):
         raise web.HTTPFound(location='https://wiltforcongress.com/favicon.ico')
+    
+    async def index(req):
+        raise web.HTTPFound(location='https://wiltforcongress.com/')
 
     app = web.Application()
-    app.add_routes([web.get('/favicon.ico', static_favicon),
+    app.add_routes([web.get('/', index),
+                    web.get('/favicon.ico', static_favicon),
                     web.get('/{hash}', autofill_cksum),
                     web.get('/{hash}/apply', autofill_cksum),
                     # web.get('/{hash}/register', register),
