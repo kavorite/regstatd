@@ -147,7 +147,7 @@ async def nationbuilder(token, path, method='GET', payload=None, **kwargs):
     uri = ('https://wiltforcongress.nationbuilder.com/api/v1'
            f'{path}?access_token={token}&')
     uri += urlencode(kwargs)
-    async with aiohttp.ClientSession() as http:
+    async with aiohttp.ClientSession(raise_for_status=True) as http:
         req = http.request(method, uri, json=payload,
                            headers={'Accept': 'application/json'})
         return (await req)
@@ -163,7 +163,14 @@ async def tag_contact_respondent(contact):
     updated = {'tags': tags, 'crc32': hashvid(contact.statevid)}
     rsp = nationbuilder(NB_TOKEN, f'/people/{uid}', 'PUT',
                         payload={'person': updated})
-    return (await rsp)
+    try:
+        return (await rsp)
+    except aiohttp.ClientResponseError as exn:
+        if exn.status == 429:
+            await asyncio.sleep(10)
+            return await tag_contact_respondent(contact)
+        else:
+            raise exn
 
 
 async def autofill_cksum(req):
