@@ -221,7 +221,7 @@ async def regstat(req):
 if __name__ == '__main__':
     from sys import stdin, stderr
     from argparse import ArgumentParser
-    # from daemon import DaemonContext
+    from daemon import DaemonContext
     import csv
     import signal
     import logging
