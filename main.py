@@ -228,7 +228,7 @@ async def regstat(req):
 if __name__ == '__main__':
     from sys import stdin, stderr
     from argparse import ArgumentParser
-    # from daemon import DaemonContext
+    from daemon import DaemonContext
     import csv
     import signal
     import logging
@@ -271,5 +271,5 @@ if __name__ == '__main__':
                     web.get('/{hash}/status', regstat)])
     logging.basicConfig(level=logging.INFO)
     with (open(args.log, 'a') if args.log is not None else stderr) as ostrm:
-        # with DaemonContext(stdout=ostrm, stderr=ostrm):
-        web.run_app(app, port=80)
+        with DaemonContext(stdout=ostrm, stderr=ostrm):
+            web.run_app(app, port=80)
