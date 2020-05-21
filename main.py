@@ -118,7 +118,7 @@ NB_TOKEN = ''
 
 
 async def register(req):
-    endpoint = 'https://register2vote.org/'
+    endpoint = 'https://voterreg.dmv.ny.gov/MotorVoter'
     try:
         contact = CONTACTS[req.match_info['hash']]
     except KeyError:
@@ -130,22 +130,14 @@ async def register(req):
             text('Voter Registration')
         with tag('script', type='text/javascript'):
             text('''
-                 window.onload = function() {
-                    var msg = 'Your previous Board of Elections filing ' +
-                        'has been used to pre-populate an application form ' +
-                        'requesting an update to your registration. ' +
-                        'Please verify that all information on the ' +
-                        'following page is up to date before your ' +
-                        'submission.';
+                window.onload = function() {
                     document.getElementById('rtv').submit();
                 }
                 ''')
         with tag('form', method='post', action=endpoint, id='rtv'):
-            keys = ('lang', 'rvFirstName', 'rvMiddleName', 'rvLastName',
-                    'rvResAddr', 'rvResZip', 'rvDob')
-            vals = ('en', contact.forename, contact.middle_initial,
-                    contact.surname, contact.address(), contact.zip,
-                    contact.dob.strftime('%m/%d/%Y'))
+            keys = ('DOB', 'email', 'sEmail', 'zip', 'terms')
+            vals = (contact.dob.strftime('%m/%d/%Y'),
+                    contact.email, contact.email, contact.zip, 'on')
             for key, val in zip(keys, vals):
                 doc.input(type='hidden', value=val, name=key)
     return web.Response(text=doc.getvalue(), content_type='text/html')
@@ -166,7 +158,7 @@ async def tag_contact_respondent(contact):
                               state_file_id=contact.statevid)
     payload = await rsp.json()
     u = payload['results'][0]
-    tags = tuple(set(u['tags']) | {'vote4robin_respondent'})
+    tags = tuple(set(u['tags']) | {'vote4robin_absentee'})
     uid = u['id']
     updated = {'tags': tags, 'crc32': hashvid(contact.statevid)}
     rsp = nationbuilder(NB_TOKEN, f'/people/{uid}', 'PUT',
