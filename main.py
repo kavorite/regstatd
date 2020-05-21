@@ -1,9 +1,13 @@
+import aiohttp
+import asyncio
 from yattag import Doc
 from aiohttp import web
 from datetime import date
 from sys import stdout
+from os import getenv
 import string
 from hashvids import hashvid, find_col_statevid
+from urllib.parse import urlencode
 
 
 INPUT_NAMES = (
@@ -71,6 +75,7 @@ class Contact(object):
         self.email = email.lower()
         month, day, year = record[27].split('/')
         self.dob = date(int(year), int(month), int(day))
+        self.statevid = record[38]
 
     def address(self):
         return f'{self.house} {self.street}'
@@ -109,6 +114,7 @@ class Contact(object):
 
 CONTACTS: dict = {}
 RECORDS: dict = {}
+NB_TOKEN = ''
 
 
 async def register(req):
@@ -145,12 +151,36 @@ async def register(req):
     return web.Response(text=doc.getvalue(), content_type='text/html')
 
 
+async def nationbuilder(token, path, method='GET', payload=None, **kwargs):
+    uri = ('https://wiltforcongress.nationbuilder.com/api/v1'
+           f'{path}?access_token={token}&')
+    uri += urlencode(kwargs)
+    async with aiohttp.ClientSession() as http:
+        req = http.request(method, uri, json=payload,
+                           headers={'Accept': 'application/json'})
+        return (await req)
+
+
+async def tag_contact_respondent(contact):
+    rsp = await nationbuilder(NB_TOKEN, '/people/search',
+                              state_file_id=contact.statevid)
+    payload = await rsp.json()
+    u = payload['results'][0]
+    tags = tuple(set(u['tags']) | {'vote4robin_respondent'})
+    uid = u['id']
+    updated = {'tags': tags, 'crc32': hashvid(contact.statevid)}
+    rsp = nationbuilder(NB_TOKEN, f'/people/{uid}', 'PUT',
+                        payload={'person': updated})
+    return (await rsp)
+
+
 async def autofill_cksum(req):
     endpoint = 'https://www2.monroecounty.gov/elections-absentee-form'
     try:
         contact = CONTACTS[req.match_info['hash']]
     except KeyError:
         raise web.HTTPFound(location=endpoint)
+    asyncio.ensure_future(tag_contact_respondent(contact))
     doc, tag, text = Doc().tagtext()
     doc.asis('<!DOCTYPE html>')
     with tag('head'):
@@ -199,13 +229,15 @@ async def regstat(req):
 if __name__ == '__main__':
     from sys import stdin, stderr
     from argparse import ArgumentParser
-    from daemon import DaemonContext
+    # from daemon import DaemonContext
     import csv
     import signal
     import logging
     parser = ArgumentParser()
     parser.add_argument('--log', required=False)
+    parser.add_argument('--token', required=True)
     args = parser.parse_args()
+    NB_TOKEN = args.token
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     stderr.write('hydrate voter registrations...\n')
     keytoid: dict = {}
@@ -227,7 +259,7 @@ if __name__ == '__main__':
 
     async def static_favicon(req):
         raise web.HTTPFound(location='https://wiltforcongress.com/favicon.ico')
-    
+
     async def index(req):
         raise web.HTTPFound(location='https://wiltforcongress.com/')
 
@@ -240,5 +272,5 @@ if __name__ == '__main__':
                     web.get('/{hash}/status', regstat)])
     logging.basicConfig(level=logging.INFO)
     with (open(args.log, 'a') if args.log is not None else stderr) as ostrm:
-        with DaemonContext(stdout=ostrm, stderr=ostrm):
-            web.run_app(app, port=80)
+        # with DaemonContext(stdout=ostrm, stderr=ostrm):
+        web.run_app(app, port=80)
