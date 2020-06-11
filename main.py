@@ -154,23 +154,26 @@ async def nationbuilder(token, path, method='GET', payload=None, **kwargs):
         headers['Content-Type'] = 'application/json'
     async with aiohttp.ClientSession(raise_for_status=True) as http:
         async with http.request(method, uri, json=payload,
-                headers=headers) as rsp:
+                                headers=headers) as rsp:
             return (await rsp.json())
 
 
-async def tag_contact_respondent(contact):
+async def tag_contact_with(contact, *tags):
     rsp = await nationbuilder(NB_TOKEN, '/people/search',
                               state_file_id=contact.statevid)
     uid = rsp['results'][0]['id']
-    try:
-        return await nationbuilder(NB_TOKEN, f'/people/{uid}/taggings', 'PUT',
-                payload={'tagging': {'tag': 'vote4robin_absentee'}})
-    except aiohttp.ClientResponseError as exn:
-        if exn.status == 429:
-            await asyncio.sleep(10)
-            return await tag_contact_respondent(contact)
-        else:
-            raise exn
+    while True:
+        try:
+            tags = tuple(set(tags) | {'vote4robin_absentee'})
+            path = f'/people/{uid}/taggings'
+            payload = {'tagging': {'tag': tags}}
+            return await nationbuilder(NB_TOKEN, path, 'PUT', payload)
+        except aiohttp.ClientResponseError as exn:
+            if exn.status == 429:
+                await asyncio.sleep(10)
+                continue
+            else:
+                raise exn
 
 
 async def autofill_cksum(req):
@@ -179,7 +182,7 @@ async def autofill_cksum(req):
         contact = CONTACTS[req.match_info['hash']]
     except KeyError:
         raise web.HTTPFound(location=endpoint)
-    asyncio.ensure_future(tag_contact_respondent(contact))
+    asyncio.ensure_future(tag_contact_with(contact, 'vote4robin_absentee'))
     doc, tag, text = Doc().tagtext()
     doc.asis('<!DOCTYPE html>')
     with tag('head'):
