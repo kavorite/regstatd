@@ -265,6 +265,10 @@ async def address_closest(origin, *terminals):
         return closest
 
 
+async def epoll_sites(req):
+    raise web.HTTPFound(location='https://www.google.com/maps/d/u/0/embed?mid=1qspTcjcMcSm2Ao4t0ZMyZhN99MHnqm6i')
+
+
 async def epoll(req):
     cksum = req.match_info['hash'].strip().lower()
     if cksum not in CONTACTS:
@@ -386,6 +390,7 @@ if __name__ == '__main__':
                         web.get('/{hash}', autofill_cksum),
                         web.get('/{hash}/apply', autofill_cksum),
                         web.get('/{hash}/earlybird', epoll),
+                        web.get('/earlybird_sites', epoll_sites)
                         # web.get('/{hash}/register', register),
                         web.get('/{hash}/status', regstat)])
         web.run_app(app, port=80)
