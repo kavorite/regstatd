@@ -1,5 +1,6 @@
 import aiohttp
 import asyncio
+from motor.motor_asyncio import AsyncIOMotorClient as Mongo
 from yattag import Doc
 from aiohttp import web
 from datetime import date
@@ -7,7 +8,7 @@ from sys import stdout
 from os import getenv
 import string
 from hashvids import hashvid, find_col_statevid
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote_plus as uriquote
 
 
 INPUT_NAMES = (
@@ -144,7 +145,7 @@ async def register(req):
 
 
 async def nationbuilder(token, path, method='GET', payload=None, **kwargs):
-    uri = ('https://wiltforcongress.nationbuilder.com/api/v1'
+    uri = ('https://wiltforcongress.nationbuilder.com/api/v1/'
            f'{path}?access_token={token}')
     q = urlencode(kwargs)
     if q != '':
@@ -164,7 +165,7 @@ async def tag_contact_with(contact, *tags):
     uid = rsp['results'][0]['id']
     while True:
         try:
-            tags = tuple(set(tags) | {'vote4robin_absentee'})
+            tags = tuple(set(tags) | {'sam_was_here'})
             path = f'/people/{uid}/taggings'
             payload = {'tagging': {'tag': tags}}
             return await nationbuilder(NB_TOKEN, path, 'PUT', payload)
@@ -182,7 +183,7 @@ async def autofill_cksum(req):
         contact = CONTACTS[req.match_info['hash']]
     except KeyError:
         raise web.HTTPFound(location=endpoint)
-    asyncio.ensure_future(tag_contact_with(contact, 'vote4robin_absentee'))
+    asyncio.create_task(tag_contact_with(contact, 'vote4robin_absentee'))
     doc, tag, text = Doc().tagtext()
     doc.asis('<!DOCTYPE html>')
     with tag('head'):
@@ -228,18 +229,111 @@ async def regstat(req):
     return web.Response(text=doc.getvalue(), content_type='text/html')
 
 
+async def address_closest(origin, *terminals):
+    batches = []
+    terminals = tuple(terminals)
+    terminal_chunks = list(terminals)
+    while len(terminal_chunks) > 0:
+        batches.append(terminal_chunks[:10])
+        terminal_chunks = terminal_chunks[min(len(terminals), 10):]
+    batches = ('|'.join(dest.replace(' ', '+') for dest in batch)
+               for batch in batches)
+    api_host = 'maps.googleapis.com'
+    endpoints = (f'https://{api_host}/maps/api/distancematrix/json'
+                 f'?origins={origin}&destinations={sites}'
+                 f'&units=metric&key={DM_TOKEN}' for sites in batches)
+
+    async with aiohttp.ClientSession(raise_for_status=True) as http:
+        tasks = [asyncio.create_task(http.get(endpoint))
+                 for endpoint in endpoints]
+        rsps = await asyncio.gather(*tasks)
+        payloads = await asyncio.gather(*(rsp.json() for rsp in rsps))
+        elements = [payload['rows'][0]['elements']
+                    for payload in payloads]
+        if len(elements) > 1:
+            for batch in elements[1:]:
+                elements[0] += batch
+        elements = elements[0]
+        closest = terminals[0]
+        closest_distance = int(elements[0]['distance']['value'])
+        if len(elements) > 1:
+            for i, element in enumerate(elements[1:]):
+                distance = int(element['distance']['value'])
+                if distance < closest_distance:
+                    closest = terminals[i+1]
+                    closest_distance = distance
+        return closest
+
+
+async def epoll(req):
+    cksum = req.match_info['hash'].strip().lower()
+    if cksum not in CONTACTS:
+        raise web.HTTPNotFound()
+    contact = CONTACTS[cksum]
+    residence = uriquote(f'{contact.house} {contact.street}, {contact.zip}')
+    early_polling_sites = (
+        '57 St. Paul St., 2nd Floor, Rochester, NY 14604',
+        '700 North St., Rochester, NY 14605',
+        '310 Arnett Blvd., Rochester, NY 14619',
+        '10 Felix St., Rochester, NY 14608',
+        '680 Westfall Rd., Rochester, NY 14620',
+        '1039 N. Greece Rd., Rochester, NY 14626',
+        '1 Miracle Mile Dr., Rochester, NY 14623',
+        '1290 Titus Ave., Rochester, NY 14617',
+        '3100 Atlantic Ave., Penfield, NY 14526',
+        '6720 Pittsford Palmyra Rd., Fairport, NY 14450',
+        '4761 Redman Rd., Brockport, NY 14420',
+        '1350 Chiyoda Dr., Webster, NY 14580',
+    )
+    cull = {'cksum': cksum, 'site': {'$nin': [None, '']}}
+    reapc = await DB.early_polling.count_documents(cull)
+    if reapc < 1:
+        closest = await address_closest(residence, *early_polling_sites)
+        sow = {'$set': {'cksum': cksum, 'site': closest}}
+        await DB.early_polling.update_many(cull, sow, upsert=True)
+    else:
+        reap = {'site': 1}
+        harvest = await DB.early_polling.find_one(cull, reap)
+        closest = harvest['site']
+    closest = uriquote(closest)
+    href = f'https://google.com/maps/place/{closest}'
+    raise web.HTTPFound(location=href)
+
+
 if __name__ == '__main__':
     from sys import stdin, stderr
     from argparse import ArgumentParser
-    from daemon import DaemonContext
     import csv
     import signal
     import logging
+    DB = Mongo('mongodb://voterreg:onboarding@vote4robin.com'
+               '/nationbuilder_replica_test').nationbuilder_replica_test
+
+    # check that we can access voters
+    async def count():
+        await DB.voters.count_documents({})
+
+    asyncio.get_event_loop().run_until_complete(count())
+
     parser = ArgumentParser()
     parser.add_argument('--log', required=False)
-    parser.add_argument('--token', required=True)
+    parser.add_argument('--nb-token', required=False)
+    parser.add_argument('--dm-token', required=False)
+    parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
-    NB_TOKEN = args.token
+    NB_TOKEN = args.nb_token
+    if NB_TOKEN is None:
+        NB_TOKEN = getenv('NB_TOKEN').strip()
+        if NB_TOKEN == '':
+            stderr.write('fatal: no NB_TOKEN specified\n')
+            exit()
+    DM_TOKEN = args.dm_token
+    if DM_TOKEN is None:
+        DM_TOKEN = getenv('DM_TOKEN').strip()
+        if DM_TOKEN == '':
+            stderr.write('fatal: no DM_TOKEN specified\n')
+            exit()
+
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     stderr.write('hydrate voter registrations...\n')
     keytoid: dict = {}
@@ -248,7 +342,10 @@ if __name__ == '__main__':
     for record in csv.reader(stdin):
         for i in range(len(record)):
             record[i] = record[i].strip()
-        key = hashvid(record[statevid])
+        try:
+            key = hashvid(record[statevid])
+        except ValueError:
+            continue
         if key in CONTACTS and keytoid[key] != record[statevid]:
             other = keytoid[key]
             msg = f'{record[statevid]}: hash collision found with {other}'
@@ -270,9 +367,14 @@ if __name__ == '__main__':
                     web.get('/favicon.ico', static_favicon),
                     web.get('/{hash}', autofill_cksum),
                     web.get('/{hash}/apply', autofill_cksum),
+                    web.get('/{hash}/earlybird', epoll),
                     # web.get('/{hash}/register', register),
                     web.get('/{hash}/status', regstat)])
     logging.basicConfig(level=logging.INFO)
     with (open(args.log, 'a') if args.log is not None else stderr) as ostrm:
-        with DaemonContext(stdout=ostrm, stderr=ostrm):
+        if not args.debug:
+            from daemon import DaemonContext
+            with DaemonContext(stdout=ostrm, stderr=ostrm):
+                web.run_app(app, port=80)
+        else:
             web.run_app(app, port=80)
