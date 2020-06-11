@@ -6,9 +6,10 @@ verify_ssl = true
 [dev-packages]
 
 [packages]
-yattag = "*"
-aiohttp = "*"
-python-daemon = "*"
+motor = "~=2.1"
+yattag = "~=1.13"
+aiohttp = "~=3.6"
+python-daemon = {version = "~=2.2", sys_platform = "== 'linux'"}
 
 [requires]
 python_version = "3.7"

@@ -301,7 +301,7 @@ async def epoll(req):
 
 
 if __name__ == '__main__':
-    from sys import stdin, stderr
+    from sys import stdin, stderr, platform
     from argparse import ArgumentParser
     import csv
     import signal
@@ -316,7 +316,7 @@ if __name__ == '__main__':
     asyncio.get_event_loop().run_until_complete(count())
 
     parser = ArgumentParser()
-    parser.add_argument('--log', required=False)
+    parser.add_argument('--log', required=(platform == 'linux'))
     parser.add_argument('--nb-token', required=False)
     parser.add_argument('--dm-token', required=False)
     parser.add_argument('--debug', action='store_true')
@@ -372,7 +372,7 @@ if __name__ == '__main__':
                     web.get('/{hash}/status', regstat)])
     logging.basicConfig(level=logging.INFO)
     with (open(args.log, 'a') if args.log is not None else stderr) as ostrm:
-        if not args.debug:
+        if not args.debug and platform == 'linux':
             from daemon import DaemonContext
             with DaemonContext(stdout=ostrm, stderr=ostrm):
                 web.run_app(app, port=80)
