@@ -387,10 +387,10 @@ if __name__ == '__main__':
         app = web.Application()
         app.add_routes([web.get('/', index),
                         web.get('/favicon.ico', static_favicon),
+                        web.get('/earlybird_sites', epoll_sites),
                         web.get('/{hash}', autofill_cksum),
                         web.get('/{hash}/apply', autofill_cksum),
                         web.get('/{hash}/earlybird', epoll),
-                        web.get('/earlybird_sites', epoll_sites)
                         # web.get('/{hash}/register', register),
                         web.get('/{hash}/status', regstat)])
         web.run_app(app, port=80)
