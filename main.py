@@ -307,6 +307,7 @@ async def epoll(req):
     if cksum not in CONTACTS:
         raise web.HTTPNotFound()
     contact = CONTACTS[cksum]
+    await asyncio.create_task(tag_contact_with(contact, 'vote4robin_earlybird'))
     residence = uriquote(f'{contact.house} {contact.street}, {contact.zip}')
     early_polling_sites = (
         '57 St. Paul St., 2nd Floor, Rochester, NY 14604',
