@@ -285,7 +285,7 @@ async def epoll(req):
         '4761 Redman Rd., Brockport, NY 14420',
         '1350 Chiyoda Dr., Webster, NY 14580',
     )
-    cull = {'residence': residence, 'site': {'$nin': [None, '']}}
+    cull = {'residence': residence, 'site': {'$in': early_polling_sites}}
     reapc = await DB.early_polling.count_documents(cull)
     if reapc < 1:
         closest = await address_closest(residence, *early_polling_sites)
