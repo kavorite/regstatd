@@ -297,7 +297,27 @@ async def epoll(req):
         closest = harvest['site']
     closest = uriquote(closest)
     href = f'https://google.com/maps/place/{closest}'
-    raise web.HTTPFound(location=href)
+    doc, tag, text = Doc().tagtext()
+    doc.asis('<!DOCTYPE html>')
+    with tag('head'):
+        with tag('title'):
+            text(f"{contact.forename}'s Early Polling Site")
+        with tag('script', type='text/javascript'):
+            text('''
+                 window.onload = function() {
+                     var msg = 'Congratulations, visitor! ' +
+                         'You are registered to vote, and ' +
+                         'Wilt for Congress was able to find ' +
+                         'your closest early voting site: ' +
+                         'Please continue to your directions.';
+                    window.alert(msg);
+                    window.location.href = 'polling site href';
+                 }
+                 '''
+                 .replace('polling site href', href)
+                 .replace('visitor', contact.forename))
+
+    return web.Response(text=doc.getvalue(), content_type='text/html')
 
 
 if __name__ == '__main__':
