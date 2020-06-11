@@ -285,11 +285,11 @@ async def epoll(req):
         '4761 Redman Rd., Brockport, NY 14420',
         '1350 Chiyoda Dr., Webster, NY 14580',
     )
-    cull = {'cksum': cksum, 'site': {'$nin': [None, '']}}
+    cull = {'residence': residence, 'site': {'$nin': [None, '']}}
     reapc = await DB.early_polling.count_documents(cull)
     if reapc < 1:
         closest = await address_closest(residence, *early_polling_sites)
-        sow = {'$set': {'cksum': cksum, 'site': closest}}
+        sow = {'$set': {'residence': residence, 'site': closest}}
         await DB.early_polling.update_many(cull, sow, upsert=True)
     else:
         reap = {'site': 1}
