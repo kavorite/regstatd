@@ -306,14 +306,6 @@ if __name__ == '__main__':
     import csv
     import signal
     import logging
-    DB = Mongo('mongodb://voterreg:onboarding@vote4robin.com'
-               '/nationbuilder_replica_test').nationbuilder_replica_test
-
-    # check that we can access voters
-    async def count():
-        await DB.voters.count_documents({})
-
-    asyncio.get_event_loop().run_until_complete(count())
 
     parser = ArgumentParser()
     parser.add_argument('--log', required=(platform == 'linux'))
@@ -362,19 +354,26 @@ if __name__ == '__main__':
     async def index(req):
         raise web.HTTPFound(location='https://wiltforcongress.com/')
 
-    app = web.Application()
-    app.add_routes([web.get('/', index),
-                    web.get('/favicon.ico', static_favicon),
-                    web.get('/{hash}', autofill_cksum),
-                    web.get('/{hash}/apply', autofill_cksum),
-                    web.get('/{hash}/earlybird', epoll),
-                    # web.get('/{hash}/register', register),
-                    web.get('/{hash}/status', regstat)])
     logging.basicConfig(level=logging.INFO)
-    with (open(args.log, 'a') if args.log is not None else stderr) as ostrm:
-        if not args.debug and platform == 'linux':
-            from daemon import DaemonContext
+
+    def run():
+        global DB
+        DB = Mongo('mongodb://voterreg:onboarding@vote4robin.com'
+                   '/nationbuilder_replica_test').nationbuilder_replica_test
+        app = web.Application()
+        app.add_routes([web.get('/', index),
+                        web.get('/favicon.ico', static_favicon),
+                        web.get('/{hash}', autofill_cksum),
+                        web.get('/{hash}/apply', autofill_cksum),
+                        web.get('/{hash}/earlybird', epoll),
+                        # web.get('/{hash}/register', register),
+                        web.get('/{hash}/status', regstat)])
+        web.run_app(app, port=80)
+
+    if not args.debug and platform == 'linux':
+        from daemon import DaemonContext
+        with (open(args.log, 'a') if args.log is not None else stderr) as ostrm:
             with DaemonContext(stdout=ostrm, stderr=ostrm):
-                web.run_app(app, port=80)
-        else:
-            web.run_app(app, port=80)
+                run()
+    else:
+        run()
