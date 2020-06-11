@@ -228,7 +228,6 @@ async def regstat(req):
                 doc.input(type='hidden', value=val, name=f'v[{key}]')
     return web.Response(text=doc.getvalue(), content_type='text/html')
 
-
 async def address_closest(origin, *terminals):
     batches = []
     terminals = tuple(terminals)
@@ -265,8 +264,42 @@ async def address_closest(origin, *terminals):
         return closest
 
 
+async def geocode(house, street, postcode):
+    cull = {'geo.type': 'Point',
+            'geo.coordinates': {'$exists': 1},
+            'address.house': {'$exists': 1},
+            'address.street': {'$exists': 1},
+            'address.zip': {'$exists': 1}}
+    reapc = await DB.geocache.count_documents(cull)
+    if reapc > 0:
+        reap = {'geo.coordinates': 1}
+        harvest = await DB.geocache.find(cull, reap)
+        lat, lng = harvest['geo']['coordinates']
+    else:
+        async with aiohttp.ClientSession(raise_for_status=True) as http:
+            address = uriquote(f'{house} {street}, {postcode}')
+            async with http.get(
+                    f'https://maps.googleapis.com/maps/api/geocode/json'
+                    f'?address={address}&key={DM_TOKEN}') as rsp:
+                payload = await rsp.json()
+                latLng = payload['results'][0]['geometry']['location']
+                lat, lng = (float(latLng['lat']), float(latLng['lng']))
+                sow = {'$set': {'address': {'house': house, 'zip': postcode, 'street': street},
+                                'geo': {'type': 'Point', 'coordinates': (lat, lng)}}}
+        await DB.early_polling.update_many(cull, sow, upsert=True)
+    return (lat, lng )
+
 async def epoll_sites(req):
-    raise web.HTTPFound(location='https://www.google.com/maps/d/u/0/embed?mid=1qspTcjcMcSm2Ao4t0ZMyZhN99MHnqm6i')
+    href = ('https://www.google.com/maps/d/u/0/embed'
+            '?mid=1qspTcjcMcSm2Ao4t0ZMyZhN99MHnqm6i')
+    house = req.query.get('house')
+    street = req.query.get('street')
+    postcode = req.query.get('zip')
+    if None not in (house, street, postcode):
+        lat, lng = await geocode(house, street, postcode)
+        coords = ','.join(map(str, (lat, lng)))
+        href = f'{href}&ll={coords}&z=11'
+    raise web.HTTPFound(location=href)
 
 
 async def epoll(req):
@@ -300,26 +333,50 @@ async def epoll(req):
         harvest = await DB.early_polling.find_one(cull, reap)
         closest = harvest['site']
     closest = uriquote(closest)
-    href = f'https://google.com/maps/place/{closest}'
+    closest_href = f'https://google.com/maps/place/{closest}'
     doc, tag, text = Doc().tagtext()
     doc.asis('<!DOCTYPE html>')
+    css_src = ('https://wiltforcongress.com/wp-content/themes/oceanwp'
+               '/assets/css/style.min.css?ver=1.8.2')
     with tag('head'):
         with tag('title'):
-            text(f"{contact.forename}'s Early Polling Site")
-        with tag('script', type='text/javascript'):
+            text(f"{contact.forename}'s Early Polling Sites")
+        with tag('link', rel='stylesheet', href=css_src):
+            pass
+        with tag('style'):
             text('''
-                 window.onload = function() {
-                     var msg = 'Congratulations, visitor! ' +
-                         'You are registered to vote, and ' +
-                         'Wilt for Congress was able to find ' +
-                         'your closest early voting site: ' +
-                         'Please continue to your directions.';
-                    window.alert(msg);
-                    window.location.href = 'polling site href';
-                 }
-                 '''
-                 .replace('polling site href', href)
-                 .replace('visitor', contact.forename))
+                 body a { color: #4287f5;
+                          font-family: Roboto, Arial, 'sans-serif'; }
+                 a:hover { color: #1bf5ee; }
+                 table { margin: 2em; width: 80%; }
+                 table > tr { padding: 2em; }
+                 th a { text-decoration: none;
+                        font-size: large; }
+                 ''')
+    with tag('body'):
+        closest_src = (r'https://www.google.com/maps/embed/v1/search'
+                       f'?q={closest}&key={DM_TOKEN}')
+        center = urlencode({'house': contact.house,
+                            'street': contact.street,
+                            'zip': contact.zip})
+        browse_src = f'/earlybird_sites?{center}'
+        with tag('table'):
+            with tag('tr'):
+                with tag('th', style='font-family:monospace'):
+                    with tag('a', href=f'https://google.com/maps/place/{closest}'):
+                        text(r'Closest early polling to '
+                             f'{contact.house} {contact.street}')
+                with tag('th', style='font-family:monospace'):
+                    with tag('a', href=browse_src):
+                        text('Browse all early polling sites')
+            with tag('tr'):
+                with tag('td'):
+                    with tag('iframe', src=closest_src, width=480, height=480):
+                        pass
+                with tag('td'):
+                    with tag('iframe', src=browse_src, width=480, height=480):
+                        pass
+
 
     return web.Response(text=doc.getvalue(), content_type='text/html')
 
