@@ -351,9 +351,12 @@ async def epoll(req):
                      font-family: Roboto, Arial, 'sans-serif'; }
                  a:hover { color: #1bf5ee; }
                  div { display: flex;
-                       flex-direction: column;
-                       margin: 2em;
-                       width: 80%; }
+                       float: center;
+                       margin: auto;
+                       padding: 2em;
+                       width: 70%;
+                       flex-direction: column; }
+                 div > * { padding: 2em; }
                  ''')
     with tag('body'):
         closest_src = (r'https://www.google.com/maps/embed/v1/search'
@@ -368,6 +371,8 @@ async def epoll(req):
                     text(r'Closest early polling to '
                          f'{contact.house} {contact.street}')
             with tag('iframe', src=closest_src, width=480, height=480):
+                pass
+            with tag('p'):
                 pass
             with tag('p'):
                 with tag('a', href=browse_src):
