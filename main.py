@@ -145,26 +145,26 @@ async def register(req):
 
 async def nationbuilder(token, path, method='GET', payload=None, **kwargs):
     uri = ('https://wiltforcongress.nationbuilder.com/api/v1'
-           f'{path}?access_token={token}&')
-    uri += urlencode(kwargs)
+           f'{path}?access_token={token}')
+    q = urlencode(kwargs)
+    if q != '':
+        uri += f'&{q}'
+    headers = {'Accept': 'application/json'}
+    if method != 'GET':
+        headers['Content-Type'] = 'application/json'
     async with aiohttp.ClientSession(raise_for_status=True) as http:
-        req = http.request(method, uri, json=payload,
-                           headers={'Accept': 'application/json'})
-        return (await req)
+        async with http.request(method, uri, json=payload,
+                headers=headers) as rsp:
+            return (await rsp.json())
 
 
 async def tag_contact_respondent(contact):
     rsp = await nationbuilder(NB_TOKEN, '/people/search',
                               state_file_id=contact.statevid)
-    payload = await rsp.json()
-    u = payload['results'][0]
-    tags = tuple(set(u['tags']) | {'vote4robin_absentee'})
-    uid = u['id']
-    updated = {'tags': tags, 'crc32': hashvid(contact.statevid)}
-    rsp = nationbuilder(NB_TOKEN, f'/people/{uid}', 'PUT',
-                        payload={'person': updated})
+    uid = rsp['results'][0]['id']
     try:
-        return (await rsp)
+        return await nationbuilder(NB_TOKEN, f'/people/{uid}/taggings', 'PUT',
+                payload={'tagging': {'tag': 'vote4robin_absentee'}})
     except aiohttp.ClientResponseError as exn:
         if exn.status == 429:
             await asyncio.sleep(10)
