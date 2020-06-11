@@ -345,13 +345,15 @@ async def epoll(req):
             pass
         with tag('style'):
             text('''
-                 body a { color: #4287f5;
-                          font-family: Roboto, Arial, 'sans-serif'; }
+                 a { text-decoration: none;
+                     color: #4287f5;
+                     font-size: large;
+                     font-family: Roboto, Arial, 'sans-serif'; }
                  a:hover { color: #1bf5ee; }
-                 table { margin: 2em; width: 80%; }
-                 table > tr { padding: 2em; }
-                 th a { text-decoration: none;
-                        font-size: large; }
+                 div { display: flex;
+                       flex-direction: column;
+                       margin: 2em;
+                       width: 80%; }
                  ''')
     with tag('body'):
         closest_src = (r'https://www.google.com/maps/embed/v1/search'
@@ -360,22 +362,18 @@ async def epoll(req):
                             'street': contact.street,
                             'zip': contact.zip})
         browse_src = f'/earlybird_sites?{center}'
-        with tag('table'):
-            with tag('tr'):
-                with tag('th', style='font-family:monospace'):
-                    with tag('a', href=f'https://google.com/maps/place/{closest}'):
-                        text(r'Closest early polling to '
-                             f'{contact.house} {contact.street}')
-                with tag('th', style='font-family:monospace'):
-                    with tag('a', href=browse_src):
-                        text('Browse all early polling sites')
-            with tag('tr'):
-                with tag('td'):
-                    with tag('iframe', src=closest_src, width=480, height=480):
-                        pass
-                with tag('td'):
-                    with tag('iframe', src=browse_src, width=480, height=480):
-                        pass
+        with tag('div'):
+            with tag('p'):
+                with tag('a', href=f'https://google.com/maps/place/{closest}'):
+                    text(r'Closest early polling to '
+                         f'{contact.house} {contact.street}')
+            with tag('iframe', src=closest_src, width=480, height=480):
+                pass
+            with tag('p'):
+                with tag('a', href=browse_src):
+                    text('Browse all early polling sites')
+            with tag('iframe', src=browse_src, width=480, height=480):
+                pass
 
 
     return web.Response(text=doc.getvalue(), content_type='text/html')
