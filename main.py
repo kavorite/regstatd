@@ -350,13 +350,13 @@ async def epoll(req):
                      font-size: large;
                      font-family: Roboto, Arial, 'sans-serif'; }
                  a:hover { color: #1bf5ee; }
-                 div { display: flex;
-                       float: center;
-                       margin: auto;
-                       padding: 2em;
-                       width: 70%;
-                       flex-direction: column; }
-                 div > * { padding: 2em; }
+                 div.flex { display: flex;
+                            float: center;
+                            margin: auto;
+                            width: 70%;
+                            padding: 4em;
+                            flex-direction: column; }
+                 div.flex > * { padding: 2em; }
                  ''')
     with tag('body'):
         closest_src = (r'https://www.google.com/maps/embed/v1/search'
@@ -365,18 +365,14 @@ async def epoll(req):
                             'street': contact.street,
                             'zip': contact.zip})
         browse_src = f'/earlybird_sites?{center}'
-        with tag('div'):
-            with tag('p'):
-                with tag('a', href=f'https://google.com/maps/place/{closest}'):
-                    text(r'Closest early polling to '
-                         f'{contact.house} {contact.street}')
+        with tag('div', klass='flex'):
+            with tag('a', href=f'https://google.com/maps/place/{closest}'):
+                text(r'Closest early polling to '
+                     f'{contact.house} {contact.street}')
             with tag('iframe', src=closest_src, width=480, height=480):
                 pass
-            with tag('p'):
-                pass
-            with tag('p'):
-                with tag('a', href=browse_src):
-                    text('Browse all early polling sites')
+            with tag('a', href=browse_src):
+                text('Browse all early polling sites')
             with tag('iframe', src=browse_src, width=480, height=480):
                 pass
 
