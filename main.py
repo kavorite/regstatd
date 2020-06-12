@@ -305,7 +305,7 @@ async def epoll_sites(req):
 async def epoll(req):
     cksum = req.match_info['hash'].strip().lower()
     if cksum not in CONTACTS:
-        raise web.HTTPNotFound()
+        raise web.HTTPFound('/earlybird_sites')
     contact = CONTACTS[cksum]
     triplet = dict(zip(('house', 'street', 'zip'),
                        (contact.house, contact.street, contact.zip)))
