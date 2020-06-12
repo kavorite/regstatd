@@ -358,7 +358,6 @@ async def epoll(req):
                             width: 70%;
                             padding: 4em;
                             flex-direction: column; }
-                 div.flex > * { padding: 2em; }
                  ''')
     with tag('body'):
         closest_src = (r'https://www.google.com/maps/embed/v1/search'
