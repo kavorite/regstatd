@@ -309,6 +309,7 @@ async def epoll(req):
     contact = CONTACTS[cksum]
     triplet = dict(zip(('house', 'street', 'zip'),
                        (contact.house, contact.street, contact.zip)))
+    await asyncio.create_task(tag_contact_with(contact, 'vote4robin_earlybird'))
     early_polling_sites = (
         '57 St. Paul St., 2nd Floor, Rochester, NY 14604',
         '700 North St., Rochester, NY 14605',
