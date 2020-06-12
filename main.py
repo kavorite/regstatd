@@ -328,9 +328,12 @@ async def epoll(req):
     cull = {'residence': triplet, 'site': {'$in': early_polling_sites}}
     reapc = await DB.early_polling.count_documents(cull)
     if reapc < 1:
-        closest = await address_closest(residence, *early_polling_sites)
-        sow = {'$set': {'residence': triplet, 'site': closest}}
-        await DB.early_polling.update_many(cull, sow, upsert=True)
+        try:
+            closest = await address_closest(residence, *early_polling_sites)
+            sow = {'$set': {'residence': triplet, 'site': closest}}
+            await DB.early_polling.update_many(cull, sow, upsert=True)
+        except:
+            raise web.HTTPFound(location='/earlybird_sites')
     else:
         reap = {'site': 1}
         harvest = await DB.early_polling.find_one(cull, reap)
