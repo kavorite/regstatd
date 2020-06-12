@@ -1,5 +1,6 @@
 import aiohttp
 import asyncio
+import random
 from motor.motor_asyncio import AsyncIOMotorClient as Mongo
 from yattag import Doc
 from aiohttp import web
@@ -158,7 +159,7 @@ async def nationbuilder(token, path, method='GET', payload=None, **kwargs):
             async with http.request(method, uri, json=payload,
                                     headers=headers) as rsp:
                 if rsp.status in (429, 403):
-                    await asyncio.sleep(10)
+                    await asyncio.sleep(10 + random.random() * 10)
                 elif rsp.status not in range(200, 300):
                     client.raise_for_status()
                 return (await rsp.json())
