@@ -349,13 +349,15 @@ async def epoll(req):
             text('''
                  a { text-decoration: none;
                      color: #4287f5;
-                     font-size: large;
+                     font-size: xx-large;
+                     padding: 0.5em;
                      font-family: Roboto, Arial, 'sans-serif'; }
                  a:hover { color: #1bf5ee; }
                  div.flex { display: flex;
                             float: center;
                             margin: auto;
-                            width: 70%;
+                            width: 80%;
+                            height: 80vh;
                             padding: 4em;
                             flex-direction: column; }
                  ''')
@@ -370,11 +372,11 @@ async def epoll(req):
             with tag('a', href=f'https://google.com/maps/place/{closest}'):
                 text(r'Closest early polling to '
                      f'{contact.house} {contact.street}')
-            with tag('iframe', src=closest_src, width=480, height=480):
+            with tag('iframe', src=closest_src, height='50%'):
                 pass
             with tag('a', href=browse_src):
                 text('Browse all early polling sites')
-            with tag('iframe', src=browse_src, width=480, height=480):
+            with tag('iframe', src=browse_src, height='50%'):
                 pass
 
 
