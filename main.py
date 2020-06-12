@@ -345,8 +345,6 @@ async def epoll(req):
     with tag('head'):
         with tag('title'):
             text(f"{contact.forename}'s Early Polling Sites")
-        with tag('link', rel='stylesheet', href=css_src):
-            pass
         with tag('style'):
             text('''
                  a { text-decoration: none;
