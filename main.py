@@ -307,7 +307,8 @@ async def epoll(req):
     if cksum not in CONTACTS:
         raise web.HTTPNotFound()
     contact = CONTACTS[cksum]
-    residence = uriquote(f'{contact.house} {contact.street}, {contact.zip}')
+    triplet = dict(zip(('house', 'street', 'zip'),
+                       (contact.house, contact.street, contact.zip)))
     early_polling_sites = (
         '57 St. Paul St., 2nd Floor, Rochester, NY 14604',
         '700 North St., Rochester, NY 14605',
@@ -322,11 +323,12 @@ async def epoll(req):
         '4761 Redman Rd., Brockport, NY 14420',
         '1350 Chiyoda Dr., Webster, NY 14580',
     )
-    cull = {'residence': residence, 'site': {'$in': early_polling_sites}}
+    residence = uriquote(f'{contact.house} {contact.street}, {contact.zip}')
+    cull = {'residence': triplet, 'site': {'$in': early_polling_sites}}
     reapc = await DB.early_polling.count_documents(cull)
     if reapc < 1:
         closest = await address_closest(residence, *early_polling_sites)
-        sow = {'$set': {'residence': residence, 'site': closest}}
+        sow = {'$set': {'residence': triplet, 'site': closest}}
         await DB.early_polling.update_many(cull, sow, upsert=True)
     else:
         reap = {'site': 1}
@@ -336,8 +338,6 @@ async def epoll(req):
     closest_href = f'https://google.com/maps/place/{closest}'
     doc, tag, text = Doc().tagtext()
     doc.asis('<!DOCTYPE html>')
-    css_src = ('https://wiltforcongress.com/wp-content/themes/oceanwp'
-               '/assets/css/style.min.css?ver=1.8.2')
     with tag('head'):
         with tag('title'):
             text(f"{contact.forename}'s Early Polling Sites")
