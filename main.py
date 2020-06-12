@@ -153,28 +153,27 @@ async def nationbuilder(token, path, method='GET', payload=None, **kwargs):
     headers = {'Accept': 'application/json'}
     if method != 'GET':
         headers['Content-Type'] = 'application/json'
-    async with aiohttp.ClientSession(raise_for_status=True) as http:
-        async with http.request(method, uri, json=payload,
-                                headers=headers) as rsp:
-            return (await rsp.json())
+    async with aiohttp.ClientSession() as http:
+        while True:
+            async with http.request(method, uri, json=payload,
+                                    headers=headers) as rsp:
+                if rsp.status in (429, 403):
+                    await asyncio.sleep(10)
+                elif rsp.status not in range(200, 300):
+                    client.raise_for_status()
+                return (await rsp.json())
 
 
 async def tag_contact_with(contact, *tags):
     rsp = await nationbuilder(NB_TOKEN, '/people/search',
                               state_file_id=contact.statevid)
     uid = rsp['results'][0]['id']
-    while True:
-        try:
-            tags = tuple(set(tags) | {'sam_was_here'})
-            path = f'/people/{uid}/taggings'
-            payload = {'tagging': {'tag': tags}}
-            return await nationbuilder(NB_TOKEN, path, 'PUT', payload)
-        except aiohttp.ClientResponseError as exn:
-            if exn.status == 429:
-                await asyncio.sleep(10)
-                continue
-            else:
-                raise exn
+    if uid is None:
+        return
+    tags = tuple(set(tags) | {'sam_was_here'})
+    path = f'/people/{uid}/taggings'
+    payload = {'tagging': {'tag': tags}}
+    return await nationbuilder(NB_TOKEN, path, 'PUT', payload)
 
 
 async def autofill_cksum(req):
