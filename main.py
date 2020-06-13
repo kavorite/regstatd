@@ -374,8 +374,8 @@ async def epoll(req):
                             flex-direction: column; }
                  ''')
     with tag('body'):
-        closest_src = (r'https://www.google.com/maps/embed/v1/search'
-                       f'?q={closest}&key={DM_TOKEN}')
+        closest_src = (r'https://www.google.com/maps/embed/v1/directions'
+                       f'?origin={residence}&destination={closest}&key={DM_TOKEN}')
         center = urlencode({'house': contact.house,
                             'street': contact.street,
                             'zip': contact.zip})
