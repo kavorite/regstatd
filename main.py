@@ -274,7 +274,7 @@ async def geocode(house, street, postcode):
     reapc = await DB.geocache.count_documents(cull)
     if reapc > 0:
         reap = {'geo.coordinates': 1}
-        harvest = await DB.geocache.find(cull, reap)
+        harvest = await DB.geocache.find_one(cull, reap)
         lat, lng = harvest['geo']['coordinates']
     else:
         async with aiohttp.ClientSession(raise_for_status=True) as http:
