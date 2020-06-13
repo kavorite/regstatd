@@ -268,9 +268,9 @@ async def address_closest(origin, *terminals):
 async def geocode(house, street, postcode):
     cull = {'geo.type': 'Point',
             'geo.coordinates': {'$exists': 1},
-            'address.house': {'$exists': 1},
-            'address.street': {'$exists': 1},
-            'address.zip': {'$exists': 1}}
+            'address.house': house,
+            'address.street': street,
+            'address.zip': postcode}
     reapc = await DB.geocache.count_documents(cull)
     if reapc > 0:
         reap = {'geo.coordinates': 1}
