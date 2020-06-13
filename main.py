@@ -228,6 +228,7 @@ async def regstat(req):
                 doc.input(type='hidden', value=val, name=f'v[{key}]')
     return web.Response(text=doc.getvalue(), content_type='text/html')
 
+
 async def address_closest(origin, *terminals):
     batches = []
     terminals = tuple(terminals)
@@ -286,8 +287,9 @@ async def geocode(house, street, postcode):
                 lat, lng = (float(latLng['lat']), float(latLng['lng']))
                 sow = {'$set': {'address': {'house': house, 'zip': postcode, 'street': street},
                                 'geo': {'type': 'Point', 'coordinates': (lat, lng)}}}
-        await DB.early_polling.update_many(cull, sow, upsert=True)
-    return (lat, lng )
+        await DB.geocache.update_many(cull, sow, upsert=True)
+    return (lat, lng)
+
 
 async def epoll_sites(req):
     href = ('https://www.google.com/maps/d/u/0/embed'
@@ -329,17 +331,27 @@ async def epoll(req):
     reapc = await DB.early_polling.count_documents(cull)
     if reapc < 1:
         try:
-            closest = await address_closest(residence, *early_polling_sites)
+            lat, lng = await geocode(contact.house,
+                                     contact.street,
+                                     contact.zip)
+            q = {'type': 'Point', 'coordinates': (lat, lng)}
+            q = {'geo': {'$near': {'$geometry': q}}}
+            top_three = []
+            sites = DB.early_polling_sites.find(q, {'address': 1})
+            async for site in sites:
+                top_three.append(site['address'])
+                if len(top_three) == 3:
+                    break
+            closest = await address_closest(residence, *top_three)
             sow = {'$set': {'residence': triplet, 'site': closest}}
             await DB.early_polling.update_many(cull, sow, upsert=True)
-        except:
+        except Exception:
             raise web.HTTPFound(location='/earlybird_sites')
     else:
         reap = {'site': 1}
         harvest = await DB.early_polling.find_one(cull, reap)
         closest = harvest['site']
     closest = uriquote(closest)
-    closest_href = f'https://google.com/maps/place/{closest}'
     doc, tag, text = Doc().tagtext()
     doc.asis('<!DOCTYPE html>')
     with tag('head'):
@@ -378,7 +390,6 @@ async def epoll(req):
                 text('Browse all early polling sites')
             with tag('iframe', src=browse_src, height='50%'):
                 pass
-
 
     return web.Response(text=doc.getvalue(), content_type='text/html')
 
@@ -448,10 +459,11 @@ if __name__ == '__main__':
                         web.get('/favicon.ico', static_favicon),
                         web.get('/earlybird_sites', epoll_sites),
                         web.get('/{hash}', autofill_cksum),
-                        web.get('/{hash}/apply', autofill_cksum),
                         web.get('/{hash}/earlybird', epoll),
+                        web.get('/{hash}/apply', autofill_cksum),
+                        web.get('/{hash}/status', regstat),
                         # web.get('/{hash}/register', register),
-                        web.get('/{hash}/status', regstat)])
+                        ])
         web.run_app(app, port=80)
 
     if not args.debug and platform == 'linux':
