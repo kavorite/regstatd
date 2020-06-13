@@ -394,6 +394,58 @@ async def epoll(req):
     return web.Response(text=doc.getvalue(), content_type='text/html')
 
 
+async def gotv_prompt(req):
+    cksum = req.match_info['hash'].strip().lower()
+    if cksum not in CONTACTS:
+        raise web.HTTPNotFound()
+    doc, tag, text = Doc().tagtext()
+    doc.asis('<!DOCTYPE html>')
+    with tag('head'):
+        doc.stag('link', rel='stylesheet',
+                 href=('https://fonts.googleapis.com/css2'
+                       '?family=Montserrat&display=swap'))
+        with tag('style'):
+            doc.asis('''
+                     body { font-family: 'Montserrat', 'Arial', 'sans-serif';
+                            background-color: #96deff; }
+                     div.input-container { padding: 0.5em; }
+                     form { padding: 1em; }
+                     div.banner { width: 100%;
+                                  height: 100%;
+                                  margin: 0px;
+                                  padding: 0px;
+                                  background-color: #2163b5; }
+                     ''')
+    with tag('body'):
+        banner = ('https://wiltforcongress.com/wp-content/uploads/2019/12/'
+                  '/2019-09-23-WfCLogo-TransparentBlue-e1577766077384.png')
+        with tag('div', klass='banner'):
+            doc.stag('img', src=banner)
+        with tag('form', action='/gotv/persist'):
+            text('''The Wilt campaign are doing all we can to make it easier to
+            vote in Democratic primaries this election cycle. We implore you to
+            take a moment to explore your options. Select your preferred
+            polling media to learn more:''')
+            keys = ('absentee', 'early', 'eday')
+            labels = ('Absentee voting',
+                      'Early voting sites',
+                      'Election day polls')
+            for key, label in zip(keys, labels):
+                with tag('div', klass='input-container'):
+                    with tag('input', type='checkbox', name=key):
+                        text(label)
+            doc.stag('input', type='submit', value='Submit')
+
+    return web.Response(text=doc.getvalue(), content_type='text/html')
+
+
+async def gotv_persist(req):
+    cksum = req.match_info['hash'].strip().lower()
+    if cksum not in CONTACTS:
+        raise web.HTTPNotFound()
+    # persist the responses given in the prompt form
+
+
 if __name__ == '__main__':
     from sys import stdin, stderr, platform
     from argparse import ArgumentParser
@@ -458,6 +510,8 @@ if __name__ == '__main__':
         app.add_routes([web.get('/', index),
                         web.get('/favicon.ico', static_favicon),
                         web.get('/earlybird_sites', epoll_sites),
+                        web.get('/{hash}/vote', gotv_prompt),
+                        web.get('/{hash}/vote/info', gotv_persist),
                         web.get('/{hash}', autofill_cksum),
                         web.get('/{hash}/earlybird', epoll),
                         web.get('/{hash}/apply', autofill_cksum),
