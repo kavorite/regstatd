@@ -448,7 +448,6 @@ async def epoll(req):
 if __name__ == '__main__':
     from sys import stdin, stderr, platform
     from argparse import ArgumentParser
-    import csv
     import signal
     import logging
 
@@ -472,9 +471,6 @@ if __name__ == '__main__':
             exit()
 
     signal.signal(signal.SIGINT, signal.SIG_DFL)
-    stderr.write('hydrate voter registrations...\n')
-    keytoid: dict = {}
-    istrm = csv.reader(stdin)
 
     async def static_favicon(req):
         raise web.HTTPFound(location='https://wiltforcongress.com/favicon.ico')
