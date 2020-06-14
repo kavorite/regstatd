@@ -143,7 +143,7 @@ class Contact(object):
             (keys[1], 'primary'),
             (keys[3], self.surname),
             (keys[4], self.forename),
-            (keys[5], self.middle_initial),
+            (keys[5], self.midname),
             (keys[6], self.suffix),
             (keys[7], self.dob.month),
             (keys[8], self.dob.day),
@@ -155,13 +155,13 @@ class Contact(object):
             (keys[16], self.apt),
             (keys[17], self.city),
             (keys[18], self.state),
-            (keys[19], self.zip),
+            (keys[19], self.zipcode),
             (keys[22], 'mail'),
             (keys[24], address),
             (keys[25], self.apt),
             (keys[26], self.city),
             (keys[27], self.state),
-            (keys[28], self.zip),
+            (keys[28], self.zipcode),
             (keys[38], '1'),
             ('form_id', 'webform_client_form_1185'),
         )
@@ -212,7 +212,7 @@ async def nationbuilder(token, path, method='GET', payload=None, **kwargs):
                     await asyncio.sleep(10 + random.random() * 10)
                 elif rsp.status not in range(200, 300):
                     http.raise_for_status()
-                return (await rsp.json())
+                return await rsp.json()
 
 
 async def tag_contact_with(contact, *tags):
@@ -256,7 +256,7 @@ async def autofill_cksum(req):
 
 async def regstat(req):
     endpoint = 'https://www.monroecounty.gov/etc/voter/'
-    contact = Contact.find_by_id(req.match_info['hash'])
+    contact = await Contact.find_by_id(req.match_info['hash'])
     if contact is None:
         raise web.HTTPFound(location=endpoint)
     doc, tag, text = Doc().tagtext()
@@ -392,7 +392,10 @@ async def epoll(req):
             top_three.append(site['address'])
             if len(top_three) == 3:
                 break
-        closest = await address_closest(residence, *top_three)
+        try:
+            closest = await address_closest(residence, *top_three)
+        except Exception:
+            raise web.HTTPFound(location='/earlybird_sites')
         sow = {'$set': {'residence': triplet, 'site': closest}}
         await DB.early_polling.update_many(cull, sow, upsert=True)
     else:
