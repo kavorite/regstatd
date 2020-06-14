@@ -421,7 +421,7 @@ async def epoll(req):
                             margin: auto;
                             width: 80%;
                             height: 100vh;
-                            padding: 4em;
+                            padding: 2em;
                             flex-direction: column; }
                  ''')
     with tag('body'):
