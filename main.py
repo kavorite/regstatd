@@ -1,6 +1,8 @@
 import aiohttp
 import asyncio
 import random
+import dataclasses
+import re
 from motor.motor_asyncio import AsyncIOMotorClient as Mongo
 from yattag import Doc
 from aiohttp import web
@@ -55,29 +57,80 @@ INPUT_NAMES = (
         )
 
 
+@dataclasses.dataclass
 class Contact(object):
-    def __init__(self, record):
-        surname, forename, mi, suffix = record[1:5]
-        self.surname = surname.strip().title()
-        self.forename = forename.strip().title()
-        mi = mi.strip()
-        if len(mi) > 1:
-            mi = mi[0]
-        self.middle_initial = mi
-        tr = str.maketrans('', '', string.punctuation)
-        suffix = suffix.strip().translate(tr).title()
-        self.suffix = suffix
+    forename: str
+    midname: str
+    surname: str
+    suffix: str
+    house: int
+    street: str
+    apt: str
+    city: str
+    state: str
+    zipcode: int
+    phone: str
+    email: str
+    dob: date
+    ctyvid: int
+
+    @staticmethod
+    def normalize(s):
+        nalpha = re.compile(r'[^a-zA-Z0-9\s]')
+        return nalpha.sub('', ' '.join(str(s).strip().split())).title()
+
+    def __post_init__(self):
+        for field in dataclasses.fields(self):
+            if field.type is str:
+                normalize = self.__class__.normalize
+                if field.name == 'email':
+                    normalize = str.lower
+                elif field.name == 'state':
+                    normalize = str.upper
+                normalized = normalize(getattr(self, field.name))
+                setattr(self, field.name, normalized)
+
+    @classmethod
+    async def find_by_id(cls, cksum):
+        cksum = cksum.lower().strip()
+        if re.match(r'[0-9a-f]{8}', cksum) is None:
+            return
+        cull = {'cksums': {'$in': [cksum]}}
+        reap = {'_id': 0, 'address': 1, 'dob': 1, 'emails': 1,
+                'name': 1, 'party': 1, 'phones': 1, 'monroe_county_id': 1}
+        harvest = await DB.pe2020.find_one(cull, reap)
+        if harvest is None:
+            return
+        name = harvest['name']
+        name_fields = ('first', 'last', 'middle', 'title')
+        forename, surname, mdlname, suffix = (
+            name[field] for field in name_fields)
+        address = harvest['address']
+        address_fields = ('house', 'street', 'apartment',
+                          'city', 'state', 'zip')
+        house, street, apartment, city, state, zipcode = (
+            address[field] for field in address_fields)
+
+        dob, phones, emails = (
+            harvest[field] for field in ('dob', 'phones', 'emails'))
+        phone = phones[0] if len(phones) > 0 else ''
+        email = emails[0] if len(emails) > 0 else ''
+        ctyvid = harvest['monroe_county_id']
+        return cls(forename, mdlname, surname, suffix,
+                   house, street, apartment, city, state, zipcode,
+                   phone, email, dob, ctyvid)
+
+    @classmethod
+    def from_cdl_dat(cls, record):
+        surname, forename, mdlname, suffix = record[1:5]
         house, street, apt = record[5:8]
-        self.street = street.title()
-        self.house = house
-        self.apt = apt.title()
-        city, self.state, self.zip = record[11:14]
-        self.city = city.title()
-        self.phone, email = record[15:17]
-        self.email = email.lower()
+        city, state, zipcode = record[11:14]
+        phone, email = record[15:17]
         month, day, year = record[27].split('/')
-        self.dob = date(int(year), int(month), int(day))
-        self.statevid = record[38]
+        dob = date(int(year), int(month), int(day))
+        return cls(forename, mdlname, surname, suffix,
+                   house, street, apt, city, state, zipcode,
+                   phone, email, dob)
 
     def address(self):
         return f'{self.house} {self.street}'
@@ -114,16 +167,13 @@ class Contact(object):
         )
 
 
-CONTACTS: dict = {}
-RECORDS: dict = {}
 NB_TOKEN = ''
 
 
 async def register(req):
     endpoint = 'https://voterreg.dmv.ny.gov/MotorVoter'
-    try:
-        contact = CONTACTS[req.match_info['hash']]
-    except KeyError:
+    contact = await Contact.find_by_id(req.match_info['hash'])
+    if contact is None:
         raise web.HTTPFound(location=endpoint)
     doc, tag, text = Doc().tagtext()
     doc.asis('<!DOCTYPE html>')
@@ -139,7 +189,7 @@ async def register(req):
         with tag('form', method='post', action=endpoint, id='rtv'):
             keys = ('DOB', 'email', 'sEmail', 'zip', 'terms')
             vals = (contact.dob.strftime('%m/%d/%Y'),
-                    contact.email, contact.email, contact.zip, 'on')
+                    contact.email, contact.email, contact.zipcode, 'on')
             for key, val in zip(keys, vals):
                 doc.input(type='hidden', value=val, name=key)
     return web.Response(text=doc.getvalue(), content_type='text/html')
@@ -161,13 +211,16 @@ async def nationbuilder(token, path, method='GET', payload=None, **kwargs):
                 if rsp.status in (429, 403):
                     await asyncio.sleep(10 + random.random() * 10)
                 elif rsp.status not in range(200, 300):
-                    client.raise_for_status()
+                    http.raise_for_status()
                 return (await rsp.json())
 
 
 async def tag_contact_with(contact, *tags):
+    ctyvid = f'055{contact.ctyvid:09}'
     rsp = await nationbuilder(NB_TOKEN, '/people/search',
-                              state_file_id=contact.statevid)
+                              county_file_id=ctyvid)
+    if not len(rsp['results']) > 0:
+        return
     uid = rsp['results'][0]['id']
     if uid is None:
         return
@@ -179,9 +232,8 @@ async def tag_contact_with(contact, *tags):
 
 async def autofill_cksum(req):
     endpoint = 'https://www2.monroecounty.gov/elections-absentee-form'
-    try:
-        contact = CONTACTS[req.match_info['hash']]
-    except KeyError:
+    contact = await Contact.find_by_id(req.match_info['hash'])
+    if contact is None:
         raise web.HTTPFound(location=endpoint)
     asyncio.create_task(tag_contact_with(contact, 'vote4robin_absentee'))
     doc, tag, text = Doc().tagtext()
@@ -204,9 +256,8 @@ async def autofill_cksum(req):
 
 async def regstat(req):
     endpoint = 'https://www.monroecounty.gov/etc/voter/'
-    try:
-        contact = CONTACTS[req.match_info['hash']]
-    except KeyError:
+    contact = Contact.find_by_id(req.match_info['hash'])
+    if contact is None:
         raise web.HTTPFound(location=endpoint)
     doc, tag, text = Doc().tagtext()
     doc.asis('<!DOCTYPE html>')
@@ -223,7 +274,7 @@ async def regstat(req):
             keys = ('lname', 'dobm', 'dobd', 'doby', 'no', 'sname', 'zip')
             vals = (contact.surname, contact.dob.month, contact.dob.day,
                     contact.dob.year, contact.house, contact.street,
-                    contact.zip)
+                    contact.zipcode)
             for key, val in zip(keys, vals):
                 doc.input(type='hidden', value=val, name=f'v[{key}]')
     return web.Response(text=doc.getvalue(), content_type='text/html')
@@ -274,7 +325,7 @@ async def geocode(house, street, postcode):
     reapc = await DB.geocache.count_documents(cull)
     if reapc > 0:
         reap = {'geo.coordinates': 1}
-        harvest = await DB.geocache.find(cull, reap)
+        harvest = await DB.geocache.find_one(cull, reap)
         lat, lng = harvest['geo']['coordinates']
     else:
         async with aiohttp.ClientSession(raise_for_status=True) as http:
@@ -285,8 +336,9 @@ async def geocode(house, street, postcode):
                 payload = await rsp.json()
                 latLng = payload['results'][0]['geometry']['location']
                 lat, lng = (float(latLng['lat']), float(latLng['lng']))
-                sow = {'$set': {'address': {'house': house, 'zip': postcode, 'street': street},
-                                'geo': {'type': 'Point', 'coordinates': (lat, lng)}}}
+                address = {'house': house, 'zip': postcode, 'street': street}
+                point = {'type': 'Point', 'coordinates': (lat, lng)}
+                sow = {'$set': {'address': address, 'geo': point}}
         await DB.geocache.update_many(cull, sow, upsert=True)
     return (lat, lng)
 
@@ -305,12 +357,11 @@ async def epoll_sites(req):
 
 
 async def epoll(req):
-    cksum = req.match_info['hash'].strip().lower()
-    if cksum not in CONTACTS:
+    contact = await Contact.find_by_id(req.match_info['hash'])
+    if contact is None:
         raise web.HTTPFound('/earlybird_sites')
-    contact = CONTACTS[cksum]
     triplet = dict(zip(('house', 'street', 'zip'),
-                       (contact.house, contact.street, contact.zip)))
+                       (contact.house, contact.street, contact.zipcode)))
     await asyncio.create_task(tag_contact_with(contact, 'vote4robin_earlybird'))
     early_polling_sites = (
         '57 St. Paul St., 2nd Floor, Rochester, NY 14604',
@@ -326,27 +377,24 @@ async def epoll(req):
         '4761 Redman Rd., Brockport, NY 14420',
         '1350 Chiyoda Dr., Webster, NY 14580',
     )
-    residence = uriquote(f'{contact.house} {contact.street}, {contact.zip}')
+    residence = uriquote(f'{contact.house} {contact.street}, {contact.zipcode}')
     cull = {'residence': triplet, 'site': {'$in': early_polling_sites}}
     reapc = await DB.early_polling.count_documents(cull)
     if reapc < 1:
-        try:
-            lat, lng = await geocode(contact.house,
-                                     contact.street,
-                                     contact.zip)
-            q = {'type': 'Point', 'coordinates': (lat, lng)}
-            q = {'geo': {'$near': {'$geometry': q}}}
-            top_three = []
-            sites = DB.early_polling_sites.find(q, {'address': 1})
-            async for site in sites:
-                top_three.append(site['address'])
-                if len(top_three) == 3:
-                    break
-            closest = await address_closest(residence, *top_three)
-            sow = {'$set': {'residence': triplet, 'site': closest}}
-            await DB.early_polling.update_many(cull, sow, upsert=True)
-        except Exception:
-            raise web.HTTPFound(location='/earlybird_sites')
+        lat, lng = await geocode(contact.house,
+                                 contact.street,
+                                 contact.zipcode)
+        q = {'type': 'Point', 'coordinates': (lat, lng)}
+        q = {'geo': {'$near': {'$geometry': q}}}
+        top_three = []
+        sites = DB.early_polling_sites.find(q, {'address': 1})
+        async for site in sites:
+            top_three.append(site['address'])
+            if len(top_three) == 3:
+                break
+        closest = await address_closest(residence, *top_three)
+        sow = {'$set': {'residence': triplet, 'site': closest}}
+        await DB.early_polling.update_many(cull, sow, upsert=True)
     else:
         reap = {'site': 1}
         harvest = await DB.early_polling.find_one(cull, reap)
@@ -369,7 +417,7 @@ async def epoll(req):
                             float: center;
                             margin: auto;
                             width: 80%;
-                            height: 80vh;
+                            height: 100vh;
                             padding: 4em;
                             flex-direction: column; }
                  ''')
@@ -378,7 +426,7 @@ async def epoll(req):
                        f'?q={closest}&key={DM_TOKEN}')
         center = urlencode({'house': contact.house,
                             'street': contact.street,
-                            'zip': contact.zip})
+                            'zip': contact.zipcode})
         browse_src = f'/earlybird_sites?{center}'
         with tag('div', klass='flex'):
             with tag('a', href=f'https://google.com/maps/place/{closest}'):
@@ -424,23 +472,6 @@ if __name__ == '__main__':
     stderr.write('hydrate voter registrations...\n')
     keytoid: dict = {}
     istrm = csv.reader(stdin)
-    statevid = find_col_statevid(istrm)
-    for record in csv.reader(stdin):
-        for i in range(len(record)):
-            record[i] = record[i].strip()
-        try:
-            key = hashvid(record[statevid])
-        except ValueError:
-            continue
-        if key in CONTACTS and keytoid[key] != record[statevid]:
-            other = keytoid[key]
-            msg = f'{record[statevid]}: hash collision found with {other}'
-            raise ValueError(msg)
-        CONTACTS[key] = Contact(record)
-        RECORDS[key] = record
-        keytoid[key] = record[statevid]
-    del keytoid
-    # print(next(iter(CONTACTS.keys())))
 
     async def static_favicon(req):
         raise web.HTTPFound(location='https://wiltforcongress.com/favicon.ico')
