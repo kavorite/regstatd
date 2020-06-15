@@ -488,7 +488,7 @@ if __name__ == '__main__':
 
     def run():
         global DB
-        DB = Mongo('mongodb://voterreg:onboarding@vote4robin.com'
+        DB = Mongo('mongodb://voterreg:onboarding@localhost'
                    '/nationbuilder_replica_test').nationbuilder_replica_test
         app = web.Application()
         app.add_routes([web.get('/', index),
