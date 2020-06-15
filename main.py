@@ -356,6 +356,12 @@ async def epoll_sites(req):
     raise web.HTTPFound(location=href)
 
 
+async def gotv_passthrough(req):
+    contact = await Contact.find_by_id(req.match_info['hash'])
+    await asyncio.create_task(tag_contact_with(contact, 'vote4robin_gotv_passthrough'))
+    raise web.HTTPFound('https://wiltforcongress.com/vote')
+
+
 async def epoll(req):
     contact = await Contact.find_by_id(req.match_info['hash'])
     if contact is None:
@@ -489,6 +495,7 @@ if __name__ == '__main__':
                         web.get('/favicon.ico', static_favicon),
                         web.get('/earlybird_sites', epoll_sites),
                         web.get('/{hash}', autofill_cksum),
+                        web.get('/{hash}/vote', gotv_passthrough),
                         web.get('/{hash}/earlybird', epoll),
                         web.get('/{hash}/apply', autofill_cksum),
                         web.get('/{hash}/status', regstat),
