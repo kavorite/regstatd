@@ -3,6 +3,7 @@ import asyncio
 import random
 import dataclasses
 import re
+import json
 from motor.motor_asyncio import AsyncIOMotorClient as Mongo
 from yattag import Doc
 from aiohttp import web
@@ -73,6 +74,8 @@ class Contact(object):
     email: str
     dob: date
     ctyvid: int
+    stvid: int
+    cksum: str
 
     @staticmethod
     def normalize(s):
@@ -97,7 +100,8 @@ class Contact(object):
             return
         cull = {'cksums': {'$in': [cksum]}}
         reap = {'_id': 0, 'address': 1, 'dob': 1, 'emails': 1,
-                'name': 1, 'party': 1, 'phones': 1, 'monroe_county_id': 1}
+                'name': 1, 'party': 1, 'phones': 1, 'monroe_county_id': 1,
+                'ny_state_id': 1}
         harvest = await DB.pe2020.find_one(cull, reap)
         if harvest is None:
             return
@@ -115,22 +119,23 @@ class Contact(object):
             harvest[field] for field in ('dob', 'phones', 'emails'))
         phone = phones[0] if len(phones) > 0 else ''
         email = emails[0] if len(emails) > 0 else ''
-        ctyvid = harvest['monroe_county_id']
+        ctyvid = harvest.get('monroe_county_id')
+        stvid = harvest.get('ny_state_id')
         return cls(forename, mdlname, surname, suffix,
                    house, street, apartment, city, state, zipcode,
-                   phone, email, dob, ctyvid)
+                   phone, email, dob, ctyvid, stvid, cksum)
 
-    @classmethod
-    def from_cdl_dat(cls, record):
-        surname, forename, mdlname, suffix = record[1:5]
-        house, street, apt = record[5:8]
-        city, state, zipcode = record[11:14]
-        phone, email = record[15:17]
-        month, day, year = record[27].split('/')
-        dob = date(int(year), int(month), int(day))
-        return cls(forename, mdlname, surname, suffix,
-                   house, street, apt, city, state, zipcode,
-                   phone, email, dob)
+    # @classmethod
+    # def from_cdl_dat(cls, record):
+    #     surname, forename, mdlname, suffix = record[1:5]
+    #     house, street, apt = record[5:8]
+    #     city, state, zipcode = record[11:14]
+    #     phone, email = record[15:17]
+    #     month, day, year = record[27].split('/')
+    #     dob = date(int(year), int(month), int(day))
+    #     return cls(forename, mdlname, surname, suffix,
+    #                house, street, apt, city, state, zipcode,
+    #                phone, email, dob)
 
     def address(self):
         return f'{self.house} {self.street}'
@@ -208,18 +213,23 @@ async def nationbuilder(token, path, method='GET', payload=None, **kwargs):
         while True:
             async with http.request(method, uri, json=payload,
                                     headers=headers) as rsp:
-                if rsp.status in (429, 403):
+                if rsp.status in (429, 403) or 499 < rsp.status < 600:
                     await asyncio.sleep(10 + random.random() * 10)
                 elif rsp.status not in range(200, 300):
-                    http.raise_for_status()
+                    rsp.raise_for_status()
                 return await rsp.json()
 
 
 async def tag_contact_with(contact, *tags):
-    ctyvid = f'055{contact.ctyvid:09}'
-    rsp = await nationbuilder(NB_TOKEN, '/people/search',
-                              county_file_id=ctyvid)
-    if not len(rsp['results']) > 0:
+    query = dict(())
+    query['custom_values'] = (
+            json.dumps({'custom_values': {'crc32': contact.cksum}}))
+    if contact.stvid is not None:
+        query['state_file_id'] = f'NY{contact.stvid:018}'
+    if contact.ctyvid is not None:
+        query['county_file_id'] = f'055{contact.ctyvid:09}'
+    rsp = await nationbuilder(NB_TOKEN, '/people/search', **query)
+    if 'results' not in rsp or len(rsp['results']) == 0:
         return
     uid = rsp['results'][0]['id']
     if uid is None:
@@ -414,6 +424,17 @@ async def epoll(req):
     with tag('head'):
         with tag('title'):
             text(f"{contact.forename}'s Early Polling Sites")
+
+        with tag('script'):
+            text('''
+                 const msg = (
+                     'The Board of Elections is encouraging all who have waited ' +
+                     'over a week for their absentee ballot to consider voting ' +
+                     'in person at _any_ early polling site through Sunday, June ' +
+                     '21. Click OK to see the closest site to your registered ' +
+                     'address and a list of all early voting sites.');
+                 alert(msg);
+                 ''')
         with tag('style'):
             text('''
                  a { text-decoration: none;
